@@ -1,0 +1,212 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_SERVER=postgres
+      - ELASTICSEARCH_HOSTS=["http://elasticsearch:9200"]
+      - REDIS_HOST=redis
+      - KAFKA_BOOTSTRAP_SERVERS=["kafka:9092"]
+      - METASPLOIT_HOST=metasploit
+      - WAZUH_HOST=wazuh-manager
+    volumes:
+      - ./backend:/app
+      - ./models:/app/models
+    depends_on:
+      - postgres
+      - elasticsearch
+      - redis
+      - kafka
+      - metasploit
+      - wazuh-manager
+      - suricata
+    networks:
+      - siem-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+    networks:
+      - siem-network
+
+  # Databases
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=siem
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - siem-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - siem-network
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - siem-network
+
+  # Message Queue
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.3
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    networks:
+      - siem-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.3
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    networks:
+      - siem-network
+
+  # Security Tools
+  metasploit:
+    image: metasploitframework/metasploit-framework:latest
+    environment:
+      - MSF_USER=msf
+      - MSF_PASSWORD=msf
+    volumes:
+      - msf_data:/home/msf/.msf4
+    ports:
+      - "55553:55553"
+    networks:
+      - siem-network
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.2
+    volumes:
+      - wazuh_etc:/var/ossec/etc
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_queue:/var/ossec/queue
+      - wazuh_var:/var/ossec/var
+      - wazuh_active_response:/var/ossec/active-response/bin
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "55000:55000"
+    networks:
+      - siem-network
+
+  suricata:
+    image: jasonish/suricata:latest
+    network_mode: "host"  # Required for network monitoring
+    volumes:
+      - suricata_logs:/var/log/suricata
+      - suricata_rules:/etc/suricata/rules
+    command: -i eth0 --init-errors-fatal
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    networks:
+      - siem-network
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - siem-network
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - siem-network
+
+  # Development Tools
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - siem-network
+
+networks:
+  siem-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  elasticsearch_data:
+  redis_data:
+  zookeeper_data:
+  kafka_data:
+  msf_data:
+  wazuh_etc:
+  wazuh_logs:
+  wazuh_queue:
+  wazuh_var:
+  wazuh_active_response:
+  suricata_logs:
+  suricata_rules:
+  prometheus_data:
+  grafana_data: 

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: siem-backend
+  namespace: siem
+  labels:
+    app: siem-backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: siem-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: siem-backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: siem-backend
+        image: your-registry/siem-backend:latest  # Replace with your image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        envFrom:
+        - configMapRef:
+            name: siem-config
+        - secretRef:
+            name: siem-secret
+        volumeMounts:
+        - name: prometheus-data
+          mountPath: /tmp/prometheus
+      volumes:
+      - name: prometheus-data
+        emptyDir: {}
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000 

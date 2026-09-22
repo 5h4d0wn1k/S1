@@ -1,3 +1,8 @@
+> **⚠️ EDUCATIONAL USE ONLY — AUTHORIZED TESTING ONLY.**
+> This project exists for education, research, and **defense of systems you own
+> or hold explicit written authorization to assess**. Unauthorized use is
+> prohibited and may be illegal. Read [ETHICS.md](ETHICS.md) and
+> [SCOPE.md](SCOPE.md) before use. Use at your own risk; **AS IS**, no warranty.
 # Next-Generation SIEM Tool
 
 A cutting-edge Security Information and Event Management (SIEM) tool with integrated offensive and defensive capabilities, powered by AI/ML for advanced threat detection and analysis.
